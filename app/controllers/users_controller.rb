@@ -5,6 +5,7 @@ require 'json'
 
 class UsersController < ApplicationController
   before_action :require_login, only: %i[edit update edit_improv edit_schedule edit_endorsements edit_password delete_avatar email email_send invites unlink destroy]
+  before_action :find_user, only: [:show, :email, :email_send, :comment_send]
 
   # GET /users
   # GET /users.json
@@ -24,8 +25,6 @@ class UsersController < ApplicationController
   # GET /users/1
   # GET /users/1.json
   def show
-    @user = User.find(params[:id])
-
     if request.path != user_path(@user)
       redirect_to @user, status: :moved_permanently
     elsif @user&.is_coach && (@user&.is_improv || @user&.is_sketch)
@@ -39,14 +38,11 @@ class UsersController < ApplicationController
   end
 
   def email
-    @user = User.find(params[:user_id])
   end
 
   def email_send
-    @to_user = User.find(params[:user_id])
-
-    if current_user && @to_user
-      current_user.send_coach_contact(@to_user, params[:message])
+    if current_user && @user
+      current_user.send_coach_contact(@user, params[:message])
     end
 
     respond_to do |format|
@@ -55,14 +51,13 @@ class UsersController < ApplicationController
   end
 
   def comment_send
-    to_user = User.find(params[:user_id])
     comment_id = params[:comment_id]
     access_token = params[:access_token]
 
     comment_data = JSON.parse(open("https://graph.facebook.com/v2.4/#{comment_id}?access_token=#{access_token}").read)
 
     if comment_data['error'].nil?
-      to_user.send_comment_notification(comment_data)
+      @user.send_comment_notification(comment_data)
     end
 
     respond_to do |format|
@@ -183,5 +178,13 @@ class UsersController < ApplicationController
 
   def user_allowed_attributes
     %i[email avatar password password_confirmation is_improv is_sketch bio city_id]
+  end
+
+  private
+
+  def find_user
+    @user ||= User.find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    render status: :not_found
   end
 end
